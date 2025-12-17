@@ -1,0 +1,30 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+description: Schema for samples.csv used in the syncbio-gdna pipeline
+type: object
+properties:
+  sample:
+    type: string
+    pattern: "^[A-Za-z0-9._-]+$"
+  relation:
+    type: string
+    enum: ["proband", "mother", "father"]
+  platform:
+    type: string
+    enum: ["ILLUMINA", "illumina"]
+  sex:
+    type: integer
+    enum: [1, 2]   # 1 = male, 2 = female
+  phenotype:
+    type: integer
+    enum: [1, 2]   # 1 = unaffected, 2 = affected
+  fq1:
+    type: string
+    pattern: ".*\\.(fastq|fq)(\\.gz)?$"
+  fq2:
+    type: string
+    pattern: ".*\\.(fastq|fq)(\\.gz)?$"
+required:
+  - sample
+  - relation
+  - platform
+

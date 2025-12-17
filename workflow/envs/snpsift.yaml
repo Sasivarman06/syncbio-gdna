@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - snpsift =5.2
+  - snpeff =5.2
+  - htslib =1.21
+  - aria2 = 1.36.0

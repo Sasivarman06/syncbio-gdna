@@ -1,0 +1,79 @@
+from scripts.utils import provided, ignore
+
+include: "rules/utils.smk"
+
+# Setup global variables
+workpath = config["output_dir"]
+
+reference_dir = config["reference_dir"]
+
+call_SV = config.get("call_sv", False)
+
+trimming_enabled = config.get("trimming", True)
+
+if not trimming_enabled:
+    # If trimming disabled, skip trimming for ALL samples
+    skip_trim = samples.index
+else:
+    # If trimming enabled, skip only samples without FASTQ
+    skip_trim = samples.index[(samples["fq1"].isna()) | (samples["fq1"] == "")]
+
+
+
+# Skip alignment if BAM provided
+if "bam" in samples.columns:
+    skip_align = samples.index[samples["bam"].notna() & (samples["bam"] != "")]
+else:
+    skip_align = pd.Index([]) 
+
+# Detect whether clinical data exists for ANY proband 
+if "clinical_data" in samples.columns:
+    clinical_series = samples.loc[solo_trio_probands, "clinical_data"].astype(str).str.strip()
+    run_exomiser = (clinical_series != "") & (clinical_series != "nan")
+    run_exomiser = run_exomiser.any()   # True if ANY proband has clinical data
+else:
+    run_exomiser = False
+
+
+
+rule all:
+    input:
+        f"{workpath}/qc/multiqc/multiqc_report.html",
+
+        # Include deepVariant VCF only if solo_analysis enabled
+        expand(f"{workpath}/vcf/{{proband}}-vep-dbSNP-ClinVar-dbNSFP_annotated-solo.vcf.gz",proband=provided(solo_probands, solo_analysis)),
+       
+        # Include VCF only if trio_analysis enabled
+        expand(f"{workpath}/vcf/{{proband}}-vep-dbSNP-ClinVar-dbNSFP_annotated-trio.vcf.gz",proband=provided(trio_probands, trio_analysis)),     
+       
+        # Always include SV annotated VCF
+        expand(f"{workpath}/SV/{{proband}}.filtered.dbnsfp.vcf",proband=provided(solo_trio_probands, call_SV)),      
+       
+        # Skip trimming and alignment for samples with BAM
+        expand(f"{workpath}/trimmed/{{sample}}_1.fastq.gz", sample=ignore(samples.index, skip_trim)),
+
+        expand(f"{workpath}/trimmed/{{sample}}_2.fastq.gz", sample=ignore(samples.index, skip_trim)),
+
+        expand(f"{workpath}/bam/{{sample}}.bam", sample=ignore(samples.index, skip_align)),
+
+        expand(f"{workpath}/phenotype/{{proband}}_exomiser.yaml", proband=provided(solo_trio_probands, run_exomiser)),
+
+        expand(f"{workpath}/exomiser/{{proband}}/{{proband}}-exomiser.html", proband=provided(solo_trio_probands, run_exomiser)),
+
+
+        
+       
+
+       
+
+include: "rules/qc.smk"
+include: "rules/reference.smk"
+include: "rules/database.smk"
+include: "rules/alignment.smk"
+include: "rules/variant-calling.smk"
+include: "rules/filter_variants.smk"
+include: "rules/mendelian_annotation.smk"
+include: "rules/annotation_trio.smk"
+include: "rules/annotation_solo.smk"
+include: "rules/call_SV.smk"
+include: "rules/exomiser.smk"
