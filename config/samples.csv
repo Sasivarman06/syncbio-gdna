@@ -1,0 +1,5 @@
+case_id,sample,relation,platform,sex,phenotype,fq1,fq2,bam
+justhusky,hugelymodelbat,proband,illumina,1,2,test_data/hugelymodelbat_1_test.fastq.gz,test_data/hugelymodelbat_2_test.fastq.gz,
+justhusky,earlycasualcaiman,father,illumina,1,1,test_data/earlycasualcaiman_1_test.fastq.gz,test_data/earlycasualcaiman_2_test.fastq.gz,
+justhusky,slowlycivilbuck,mother,illumina,2,1,test_data/slowlycivilbuck_1_test.fastq.gz,test_data/slowlycivilbuck_2_test.fastq.gz,
+

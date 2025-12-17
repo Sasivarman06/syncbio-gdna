@@ -1,0 +1,45 @@
+output_dir: "results" # Default, overridden by CLI
+
+reference_dir: "test_resources"
+
+samples: "config/samples.csv" # Default, overridden by CLI
+
+ped: "data/trio.ped" # Default, overridden by CLI
+
+intervals: test_resources/genome/intervals.list # Default, overridden by CLI
+
+trimming: true # Default, overridden by CLI
+
+call_sv: false # Default, overridden by CLI
+
+genome:
+  version: hg38
+  url: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz
+
+vep:
+  version: GRCh38
+
+dbNSFP:
+  version: 4.5a
+  database: https://usf.box.com/shared/static/2hzcx5s6p1xui7oen16xqzndfrkt8l9l
+
+dbSNP:
+  ref: https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz
+  index: https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz.tbi
+  assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/GCF_000001405.40_GRCh38.p14_assembly_report.txt
+
+ClinVar:
+  version: 20230514
+  data: https://ftp.ncbi.nih.gov/pub/clinvar/vcf_GRCh38/archive_2.0/2025/clinvar_20250715.vcf.gz
+
+exomiser:
+  jar: 
+    url: https://data.monarchinitiative.org/exomiser/latest/exomiser-cli-14.0.0-distribution.zip
+    version: 14.0.0
+  assembly: 
+    url: https://data.monarchinitiative.org/exomiser/data/2402_hg38.zip
+    version: 2402
+  phenotype_db:  
+    url: https://data.monarchinitiative.org/exomiser/data/2402_phenotype.zip
+    version: 2402
+
