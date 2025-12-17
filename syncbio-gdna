@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+import shutil
+import os
+import yaml
+# --- Constants ---
+DEFAULT_CORES = 4
+SCRIPT_DIR = Path(__file__).parent.resolve()
+SNAKEFILE = SCRIPT_DIR / "workflow/Snakefile"
+
+# Add workflow/scripts to Python path
+sys.path.insert(0, str(SCRIPT_DIR / "workflow" / "scripts"))
+from utils import generate_temp_samplesheet, generate_temp_bamsheet, valid_csv, valid_bam, valid_fastq
+
+def run_pipeline(args):
+    """Execute Snakemake with the given configuration."""
+    cmd = [
+        "snakemake",
+        "-s", str(SNAKEFILE),
+        "--cores", str(args.cores),
+        "--use-conda",
+    ]
+
+    if args.rerun_incomplete:
+        cmd.append("--rerun-incomplete")
+
+    
+    # Load base config if it exists
+    config_file = SCRIPT_DIR / "config/config.yaml"
+    config_dict = {}
+    if config_file.exists():
+        with open(config_file) as f:
+            config_dict = yaml.safe_load(f)
+    
+    # Add our overrides
+    if args.samplesheet:
+        config_dict["samples"] = str(args.samplesheet)
+    elif args.fq1:
+        if not args.fq2:
+            print("Error: Both --fq1 and --fq2 must be provided.", file=sys.stderr)
+            sys.exit(1)
+        temp_csv = generate_temp_samplesheet(
+            fq1=args.fq1,
+            fq2=args.fq2,
+            phenotype=args.phenotype
+        )
+        config_dict["samples"] = str(temp_csv)
+    
+    elif args.bam:
+        temp_csv = generate_temp_bamsheet(
+            bam=args.bam,
+            phenotype=args.phenotype
+        )
+        config_dict["samples"] = str(temp_csv)
+    else:
+        print("Error: Please provide either --samplesheet or --fq1 or --bam.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.output:
+        config_dict["output_dir"] = str(args.output)
+    
+    if args.reference:
+        config_dict["reference_dir"] = str(args.reference)
+
+    if args.skip_trim:
+        config_dict["trimming"] = False
+    
+    # Only add ped if it exists in args (for trio mode)
+    if hasattr(args, 'ped') and args.ped:
+        config_dict["ped"] = str(args.ped)
+
+    if hasattr(args, 'intervals') and args.intervals:
+        config_dict["intervals"] = str(args.intervals)
+    
+    if hasattr(args, 'call_sv') and args.call_sv:
+        config_dict["call_sv"] = True
+    else:
+        config_dict["call_sv"] = False
+
+
+    if args.dry_run:
+        cmd.append("--dry-run")   
+    
+    # Write temporary config file
+    tmp_config_path = SCRIPT_DIR / "config" / "tmp_config.yaml"
+    with open(tmp_config_path, "w") as tmp:
+        yaml.dump(config_dict, tmp)
+    
+  
+    # Add the temporary config file
+    cmd.extend(["--configfile", str(tmp_config_path)])
+
+    # Set up environment for Singularity 
+    env = os.environ.copy()
+    if args.sif_cache:
+        args.sif_cache.mkdir(parents=True, exist_ok=True)
+        env["SINGULARITY_CACHEDIR"] = str(args.sif_cache)
+        env["SINGULARITY_LOCALCACHEDIR"] = str(args.sif_cache)
+     
+
+    if args.tmpdir:
+        tmp_path = args.tmpdir / ".tmp"
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        env["SINGULARITY_TMPDIR"] = str(tmp_path)
+        env["TMPDIR"] = str(tmp_path)
+
+    if args.sif_cache or args.tmpdir or shutil.which("singularity"):
+        cmd.append("--use-singularity")
+        bind_dirs = []
+        if args.sif_cache:
+            bind_dirs.append(str(args.sif_cache))
+        if args.tmpdir:
+            bind_dirs.append(str(args.tmpdir))
+        if bind_dirs:
+            cmd.extend(["--singularity-args", f"--bind {':'.join(bind_dirs)}"])
+
+     
+    try:
+        subprocess.run(cmd, check=True, env=env)
+    finally:
+        #Clean up the temporary config file
+        try:
+           os.unlink(tmp_config_path)
+        except:
+           pass
+
+def unlock_pipeline(args):
+    """Unlock the Snakemake working directory."""
+    cmd = [
+        "snakemake",
+        "-s", str(SNAKEFILE),
+        "--unlock"
+    ]
+    subprocess.run(cmd, check=True)
+
+
+def parse_args(args=None):
+    """Separate our args from Snakemake args."""
+    parser = argparse.ArgumentParser(
+        description="SyncBio-gDNA - A rare disease variant calling pipeline",
+    )
+
+
+    subparsers = parser.add_subparsers(help='List of available sub-commands')
+    
+    run_parser = subparsers.add_parser(
+        'run',
+        help='Run SyncBio-gDNA for solo and trio analysis',
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=40, width=100)
+    )
+    # Add mutually exclusive group for input options
+    run_input = run_parser.add_mutually_exclusive_group(required=True) 
+    run_input.add_argument("--fq1",type=valid_fastq,help="Forward reads (single-sample mode)")
+    run_parser.add_argument("--fq2",type=valid_fastq,help="Reverse reads (single-sample mode)")
+    run_input.add_argument("--bam",type=valid_bam,help="Input BAM file (single-sample mode)")
+    run_parser.add_argument("--phenotype",type=Path,help="Phenotype/clinical data associated with the sample (single-sample mode)")
+    run_input.add_argument("--samplesheet",type=valid_csv,help="Path to samplesheet (multiple-sample mode)")
+    run_parser.add_argument("--output", type=Path, required=True, help="Output directory for results")
+    run_parser.add_argument("--reference", type=Path, help="Path to reference directory")
+    run_parser.add_argument("--ped", type=Path, help="Path to pedigree file")
+    run_parser.add_argument("--intervals",type=Path,help="Path to genomic intervals file (.bed or .list) defining target regions for variant calling")
+    run_parser.add_argument("--call-sv",action="store_true",help="Enable structural variant (SV) calling")
+    run_parser.add_argument("--skip-trim", action="store_true", help="Skip read trimming step")
+    run_parser.add_argument("--dry-run", action="store_true", help="Perform a dry run (do not execute any jobs)")
+    run_parser.add_argument("--rerun-incomplete",action="store_true",help="Force syncbio-gdna to re-run jobs with incomplete outputs")
+    run_parser.add_argument("--cores", type=int, default=DEFAULT_CORES, help=f"CPU cores to use (default: {DEFAULT_CORES})")
+    run_parser.add_argument("--sif-cache", type=Path, help="Custom directory to store Singularity image")
+    run_parser.add_argument("--tmpdir", type=Path, help="Directory to store temporary files")
+    run_parser.set_defaults(mode="solo")
+    run_parser.set_defaults(func=run_pipeline)
+
+    # Unlock subcommand
+    unlock_parser = subparsers.add_parser('unlock',
+        help='Unlocks a previous runs output directory.'
+    )
+
+    unlock_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Output directory to unlock"
+    )
+
+    unlock_parser.set_defaults(func=unlock_pipeline)
+    args = parser.parse_args(args)
+    return args
+
+
+def main():
+    args = parse_args()
+    if hasattr(args, 'func'):
+        args.func(args)
+    else:
+        print("No command specified.", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
